@@ -16,6 +16,7 @@ type Glyphs struct {
 	Waiting  string // a goal suspended on human approval
 	Running  string // a fork still working
 	Rule     string // the horizontal line between rail sections
+	RuleV    string // the vertical line separating the transcript from the rail
 	Sep      string // separator between status fields
 	Ellipsis string // truncation
 	Ask      string // the prompt glyph while awaiting approval
@@ -34,6 +35,7 @@ func Unicode() Glyphs {
 		Waiting:  "◷",
 		Running:  "⟳",
 		Rule:     "─",
+		RuleV:    "│",
 		Sep:      "·",
 		Ellipsis: "…",
 		Ask:      "?",
@@ -55,6 +57,7 @@ func ASCII() Glyphs {
 		Waiting:  "~",
 		Running:  "*",
 		Rule:     "-",
+		RuleV:    "|",
 		Sep:      "-",
 		Ellipsis: "...",
 		Ask:      "?",
