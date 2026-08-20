@@ -294,3 +294,32 @@ func TestWindowHandlesEmptyTranscript(t *testing.T) {
 		t.Errorf("Window with zero height = %v, want nil", got)
 	}
 }
+
+// TranscriptWidth must agree with what Frame actually lays out, or a caller
+// clamping its own scroll will disagree with the rendered frame.
+func TestTranscriptWidthMatchesTheFrame(t *testing.T) {
+	r := testRenderer()
+	s := sampleScreen()
+	s.Blocks = []ui.Block{userBlock()}
+
+	for w := 20; w <= 220; w += 3 {
+		want := ui.TranscriptWidth(w, 0)
+		frame := r.Frame(s, ui.Layout{Width: w, Height: 30}, nil)
+
+		// The rule under the transcript spans exactly the transcript's width,
+		// so counting its cells up to the rail divider measures what Frame
+		// actually laid out. Runes, not bytes: these glyphs are multi-byte.
+		rule := ansi.Strip(frame[2+ui.TranscriptHeight(30)])
+		divider := []rune(theme.Unicode().RuleV)[0]
+		got := 0
+		for _, r := range rule {
+			if r == divider {
+				break
+			}
+			got++
+		}
+		if got != want {
+			t.Fatalf("width %d: TranscriptWidth said %d, frame laid out %d", w, want, got)
+		}
+	}
+}

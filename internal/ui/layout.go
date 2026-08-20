@@ -35,6 +35,17 @@ func TranscriptHeight(height int) int {
 	return height - chromeRows
 }
 
+// TranscriptWidth is how many columns the transcript gets in a terminal of the
+// given width, once the rail and its divider are taken out. It equals the full
+// width when the terminal is too narrow to carry a rail.
+func TranscriptWidth(total, preferredRail int) int {
+	rail := theme.RailWidth(total, preferredRail)
+	if rail == 0 {
+		return max(total, 0)
+	}
+	return total - rail - 1
+}
+
 // Session is the state the status bar reports.
 type Session struct {
 	Command string     // "agbala attach sbx-7f21"
@@ -104,10 +115,7 @@ func (r Renderer) Frame(s Screen, l Layout, cache *Cache) []string {
 	}
 
 	railW := theme.RailWidth(l.Width, l.RailWidth)
-	leftW := l.Width
-	if railW > 0 {
-		leftW = l.Width - railW - 1 // one column for the divider
-	}
+	leftW := TranscriptWidth(l.Width, l.RailWidth)
 
 	out := make([]string, 0, l.Height)
 	out = append(out, r.statusBar(s.Session, l.Width))
