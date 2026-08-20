@@ -1,0 +1,2 @@
+[38;2;227;161;61m▌[m [1;38;2;227;161;61mYOU[m  [38;2;75;83;93m09:58:11                                                                                                         [m
+[38;2;227;161;61m▌[m [38;2;230;237;243mextract the retry logic out of client.go into its own package                                                         [m

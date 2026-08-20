@@ -1,0 +1,4 @@
+[38;2;57;197;207m▌[m [1;38;2;57;197;207mHOST[m  [38;2;75;83;93magbala start · 09:41:02                                                                                         [m
+[38;2;57;197;207m▌[m [38;2;110;118;129m✔ authenticated  ade@oga.internal   token ttl 8h, 1 scope                                                             [m
+[38;2;57;197;207m▌[m [38;2;110;118;129m✔ sandbox        sbx-7f21 booted in 3.1s   4 vCPU / 8 GB                                                              [m
+[38;2;57;197;207m▌[m [38;2;110;118;129m✔ toolchain     restored from cache   go 1.23 · node 20                                                               [m

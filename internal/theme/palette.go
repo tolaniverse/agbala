@@ -36,8 +36,14 @@ var (
 
 // Roles that sit outside the ramp.
 var (
+	// TextQuiet is the same grey as the tool tone, used for goal text that is
+	// neither active nor finished. The design reuses the hue deliberately, so
+	// this is an alias rather than a second literal.
+	TextQuiet = Tool
+
 	TextSubtitle = lipgloss.Color("#565e68") // spec subtitle
 	TextDenied   = lipgloss.Color("#6e5257") // struck-through denied goal
+	TextInactive = lipgloss.Color("#5a626c") // an unselected mode tab
 	Path         = lipgloss.Color("#2f80c8") // cwd and branch in the footer
 	GitMeta      = lipgloss.Color("#39424b") // dirty-file count
 )
