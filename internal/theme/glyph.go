@@ -8,12 +8,14 @@ import "strings"
 // differ without the ui package caring.
 type Glyphs struct {
 	Bar      string // the event class bar, exactly one cell wide
+	BarWide  string // the mode bar beside the input, twice the event bar's weight
 	Done     string // a completed goal
 	Active   string // the goal in progress, and the input prompt
 	Pending  string // a goal not started
 	Denied   string // a goal blocked by a rule
 	Waiting  string // a goal suspended on human approval
 	Running  string // a fork still working
+	Rule     string // the horizontal line between rail sections
 	Sep      string // separator between status fields
 	Ellipsis string // truncation
 	Ask      string // the prompt glyph while awaiting approval
@@ -24,12 +26,14 @@ type Glyphs struct {
 func Unicode() Glyphs {
 	return Glyphs{
 		Bar:      "▌",
+		BarWide:  "█",
 		Done:     "✔",
 		Active:   "▸",
 		Pending:  "○",
 		Denied:   "✕",
 		Waiting:  "◷",
 		Running:  "⟳",
+		Rule:     "─",
 		Sep:      "·",
 		Ellipsis: "…",
 		Ask:      "?",
@@ -43,12 +47,14 @@ func Unicode() Glyphs {
 func ASCII() Glyphs {
 	return Glyphs{
 		Bar:      "|",
+		BarWide:  "#",
 		Done:     "+",
 		Active:   ">",
 		Pending:  "-",
 		Denied:   "x",
 		Waiting:  "~",
 		Running:  "*",
+		Rule:     "-",
 		Sep:      "-",
 		Ellipsis: "...",
 		Ask:      "?",

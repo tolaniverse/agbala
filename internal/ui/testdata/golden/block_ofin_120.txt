@@ -1,0 +1,5 @@
+[38;2;74;158;234m▌[m [1;38;2;74;158;234mÒFIN[m  [38;2;75;83;93mscope: go · service-tier-1 · payments                                                                           [m
+[38;2;74;158;234m▌[m [38;2;173;182;192m12 rules resolved and injected into the system prompt                                                                 [m
+[38;2;74;158;234m▌[m [38;2;110;118;129m  ofin-014  write   migrations/**            deny                                                                     [m
+[38;2;74;158;234m▌[m [38;2;110;118;129m  ofin-031  bash    network egress           require_human                                                            [m
+[38;2;74;158;234m▌[m [38;2;75;83;93m  … 9 more   ·   agbala ofin rules                                                                                    [m

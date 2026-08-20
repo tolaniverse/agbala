@@ -2,6 +2,9 @@ GO      ?= go
 BIN     := agbala
 PKG     := ./...
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+# Packages whose tests write golden files. Add new ones here as they appear.
+GOLDEN_PKGS ?= ./internal/ui
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .DEFAULT_GOAL := help
@@ -23,8 +26,10 @@ bench: ## Run the render benchmarks
 	$(GO) test -run '^$$' -bench . -benchmem $(PKG)
 
 .PHONY: golden
+# The packages must precede -update: go test stops parsing package patterns at
+# the first flag it does not recognise.
 golden: ## Regenerate the golden files, then review the diff before committing
-	$(GO) test -run TestGolden -update $(PKG)
+	$(GO) test -run TestGolden $(GOLDEN_PKGS) -update=true
 
 .PHONY: lint
 lint: ## Run golangci-lint
