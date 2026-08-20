@@ -139,3 +139,58 @@ func sampleRules() []ui.Rule {
 }
 
 func testRenderer() ui.Renderer { return ui.New(theme.Unicode()) }
+
+// sampleScreen is the design's "edit · bash · test" state — the ordinary
+// working loop, and the one a frame spends most of its life in.
+func sampleScreen() ui.Screen {
+	return ui.Screen{
+		Session: ui.Session{
+			Command: "agbala attach sbx-7f21",
+			State:   "EXECUTING",
+			Tone:    theme.ToneOK,
+			Turn:    "14",
+			Hint:    "ctrl-d detach",
+		},
+		Blocks: []ui.Block{userBlock(), toolBlock(), denyBlock()},
+		Rail: ui.Rail{
+			Model:      "claude-sonnet-4-6",
+			CtxPercent: 34,
+			CtxLabel:   "68k / 200k",
+			Cost: []ui.KV{
+				{Key: "this turn", Value: "$0.041"},
+				{Key: "session", Value: "$1.28"},
+				{Key: "tok in / out", Value: "412k / 38k"},
+			},
+			LSPServer:   "gopls 0.16",
+			Diagnostics: sampleDiagnostics()[:3],
+			Goals:       sampleGoals()[:4],
+			RuleCount:   "12 in scope",
+			Rules:       sampleRules(),
+			Sandbox: []ui.KV{
+				{Key: "vm", Value: "sbx-7f21"},
+				{Key: "size", Value: "4 vCPU / 8 GB"},
+				{Key: "uptime", Value: "2h 14m"},
+				{Key: "state", Value: "running", Color: theme.OK},
+			},
+		},
+		Input: ui.Input{
+			Loading: "go test ./...  ·  6s  ·  esc to interrupt",
+			Prompt:  ui.Prompt{Placeholder: "insert message", CursorOn: true},
+			Mode:    theme.ModeAuto,
+			Cwd:     "~/src/oga",
+			Branch:  "feat/ofin-gate",
+			Dirty:   "3 changed",
+		},
+	}
+}
+
+// longTranscript builds n blocks, for proving that frame cost does not grow
+// with session length.
+func longTranscript(n int) []ui.Block {
+	blocks := make([]ui.Block, 0, n)
+	samples := allBlocks()
+	for i := range n {
+		blocks = append(blocks, samples[i%len(samples)].Block)
+	}
+	return blocks
+}

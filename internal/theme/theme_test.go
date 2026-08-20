@@ -104,7 +104,7 @@ func TestGlyphsAreSingleCell(t *testing.T) {
 			single := map[string]string{
 				"Bar": g.Bar, "BarWide": g.BarWide, "Done": g.Done, "Active": g.Active, "Pending": g.Pending,
 				"Denied": g.Denied, "Waiting": g.Waiting, "Running": g.Running,
-				"Rule": g.Rule, "Sep": g.Sep, "Ask": g.Ask, "Cursor": g.Cursor,
+				"Rule": g.Rule, "RuleV": g.RuleV, "Sep": g.Sep, "Ask": g.Ask, "Cursor": g.Cursor,
 			}
 			for field, glyph := range single {
 				if w := lipgloss.Width(glyph); w != 1 {
