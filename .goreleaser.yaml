@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: agbala
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: agbala
+    main: ./cmd/agbala
+    binary: agbala
+    # A single static binary with no runtime to install is a product
+    # requirement, not a preference — see PRODUCT_SPEC.md.
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: agbala
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto
+
+homebrew_casks:
+  - name: agbala
+    repository:
+      owner: tolaniverse
+      name: homebrew-tap
+    homepage: https://github.com/tolaniverse/agbala
+    description: A sandbox-first coding agent harness. Your laptop is a terminal, not a workstation.
+    # Strip the quarantine attribute so an unsigned binary runs without a
+    # right-click-open dance on macOS.
+    hooks:
+      post:
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/agbala"]
+          end
