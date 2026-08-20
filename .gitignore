@@ -1,0 +1,16 @@
+# Binaries
+/agbala
+/dist/
+*.exe
+
+# Test & coverage
+*.test
+*.out
+coverage.*
+
+# Benchmark output
+/bench-results/
+
+# Local editor / agent state
+.claude/settings.local.json
+.DS_Store
