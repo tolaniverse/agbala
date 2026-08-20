@@ -1,0 +1,11 @@
+{
+  "cache_entries_after_sliding_window": 20,
+  "frame_idle/100/allocs_per_op": 650,
+  "frame_idle/100/bytes_per_op": 33506,
+  "frame_idle/2000/allocs_per_op": 650,
+  "frame_idle/2000/bytes_per_op": 33393,
+  "frame_mutate_middle/100/allocs_per_op": 723,
+  "frame_mutate_middle/100/bytes_per_op": 37024,
+  "frame_mutate_middle/2000/allocs_per_op": 729,
+  "frame_mutate_middle/2000/bytes_per_op": 36712
+}

@@ -25,11 +25,30 @@ const boxPad = 1
 // The bar's colour is the only channel carrying the block's type — the design
 // is explicit that there are no boxes, avatars, or per-class icons.
 type Block struct {
+	// ID identifies this block across frames, so a cache can recognise it
+	// after the blocks around it have changed. Zero means anonymous: such a
+	// block is re-rendered every frame, which is correct but not cheap.
+	//
+	// Identity cannot be positional. An event stream mutates blocks that are
+	// no longer last — the design's fork state shows one fork still running
+	// with newer output beneath it — and position alone cannot tell a changed
+	// block from its neighbour shifting.
+	ID BlockID
+
+	// Rev is bumped whenever the block's contents change. Together with ID it
+	// is the cache key: same pair, same pixels.
+	Rev uint32
+
 	Tag   string     // HOST, YOU, AGENT, TOOL, PROPOSED, DENIED, APPROVAL, FORKS
 	Tone  theme.Tone // the event class, and so the bar colour
 	Meta  string     // timing, verdict, rule id — whatever qualifies this block
 	Lines []Line
 }
+
+// BlockID is a transcript block's stable identity. Zero is reserved to mean
+// "anonymous", so the zero value of a Block is safely uncacheable rather than
+// silently sharing a cache slot with every other zero-valued block.
+type BlockID uint64
 
 // Line is one row of a block's body.
 type Line struct {

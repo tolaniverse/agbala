@@ -25,6 +25,17 @@ test: ## Run the test suite with the race detector
 bench: ## Run the render benchmarks
 	$(GO) test -run '^$$' -bench . -benchmem $(PKG)
 
+# Gates deterministic metrics only — allocation counts and byte counts, which
+# are a function of the code and its input. Wall-clock on a shared runner is
+# not, so `bench` reports it and this target ignores it.
+.PHONY: bench-gate
+bench-gate: ## Fail if allocation metrics regressed against the committed baseline
+	AGBALA_PERF_GATE=1 $(GO) test -run TestPerfGate $(GOLDEN_PKGS)
+
+.PHONY: bench-baseline
+bench-baseline: ## Re-record the performance baseline, then review the diff
+	$(GO) test -run TestPerfGate $(GOLDEN_PKGS) -record-baseline
+
 .PHONY: golden
 # The packages must precede -update: go test stops parsing package patterns at
 # the first flag it does not recognise.

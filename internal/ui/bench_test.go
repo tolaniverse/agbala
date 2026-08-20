@@ -81,3 +81,31 @@ func BenchmarkRailColumn(b *testing.B) {
 	}
 	_ = theme.RailDefault
 }
+
+// Mutating one block in a long transcript is the shape an event stream
+// produces most often: a tool result landing, a fork ticking over. It must cost
+// one block's layout, not the transcript's.
+func BenchmarkFrameMutateMiddle(b *testing.B) {
+	r := testRenderer()
+	layout := ui.Layout{Width: 120, Height: 40}
+
+	for _, n := range []int{100, 500, 2000} {
+		b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+			s := sampleScreen()
+			s.Blocks = longTranscript(n)
+			cache := ui.NewCache(r)
+			r.Frame(s, layout, cache)
+
+			// Mutate in place. Copying the block slice would allocate in
+			// proportion to session length and swamp what is being measured,
+			// and a fold mutates its own slice in place anyway.
+			mid := n / 2
+			b.ResetTimer()
+			b.ReportAllocs()
+			for b.Loop() {
+				s.Blocks[mid].Rev++
+				r.Frame(s, layout, cache)
+			}
+		})
+	}
+}

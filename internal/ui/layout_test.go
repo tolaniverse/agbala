@@ -148,9 +148,9 @@ func TestMaxScroll(t *testing.T) {
 	}
 }
 
-// The cache is what keeps a frame proportional to the visible window rather
-// than to session length. Without it, streaming a token into a long transcript
-// re-lays out every block that came before.
+// The cache is what keeps a frame proportional to what changed rather than to
+// session length. Without it, streaming a token into a long transcript re-lays
+// out every block that came before.
 func TestCacheOnlyRendersWhatChanged(t *testing.T) {
 	c := ui.NewCache(testRenderer())
 	blocks := longTranscript(200)
@@ -160,16 +160,90 @@ func TestCacheOnlyRendersWhatChanged(t *testing.T) {
 		t.Fatalf("first frame laid out %d blocks, want 200", got)
 	}
 
-	// A token arriving grows the final block and touches nothing else.
+	// An unchanged redraw — a cursor blink, say — costs nothing at all.
+	before := c.Renders()
 	c.Lines(blocks, 100, theme.Comfortable)
-	if got := c.Renders(); got != 201 {
-		t.Errorf("a redraw laid out %d blocks in total, want 201 (only the streaming block)", got)
+	if got := c.Renders() - before; got != 0 {
+		t.Errorf("an unchanged redraw laid out %d blocks, want 0", got)
 	}
 
-	// Appending a block costs that block plus the one that was streaming.
-	c.Lines(append(blocks, userBlock()), 100, theme.Comfortable)
-	if got := c.Renders(); got != 203 {
-		t.Errorf("appending laid out %d blocks in total, want 203", got)
+	// A token arriving grows the final block. Mutations accumulate, as they do
+	// in a real session — rebuilding from the pristine slice would revert the
+	// previous change and correctly cost a second render.
+	cur := touch(blocks, len(blocks)-1)
+	before = c.Renders()
+	c.Lines(cur, 100, theme.Comfortable)
+	if got := c.Renders() - before; got != 1 {
+		t.Errorf("streaming into the last block laid out %d blocks, want 1", got)
+	}
+
+	// Appending costs exactly the appended block.
+	cur = append(cur, ui.Block{ID: 9001, Tag: "YOU"})
+	before = c.Renders()
+	c.Lines(cur, 100, theme.Comfortable)
+	if got := c.Renders() - before; got != 1 {
+		t.Errorf("appending laid out %d blocks, want 1", got)
+	}
+}
+
+// The case positional caching could not serve, and the reason this cache is
+// keyed: the design's fork state mutates a block that is no longer last —
+// fork c ticks over while the agent's comparison sits beneath it.
+func TestCacheRerendersOnlyTheMutatedMiddleBlock(t *testing.T) {
+	c := ui.NewCache(testRenderer())
+	cur := longTranscript(500)
+	c.Lines(cur, 100, theme.Comfortable)
+
+	for _, i := range []int{0, 1, 250, 498} {
+		cur = touch(cur, i)
+		before := c.Renders()
+		c.Lines(cur, 100, theme.Comfortable)
+		if got := c.Renders() - before; got != 1 {
+			t.Errorf("mutating block %d of 500 laid out %d blocks, want 1", i, got)
+		}
+	}
+}
+
+// A block with no identity cannot be recognised across frames, so it is
+// re-rendered every time. That is the honest fallback for hand-built blocks;
+// it must not silently share a cache slot with every other anonymous block.
+func TestCacheDoesNotShareASlotBetweenAnonymousBlocks(t *testing.T) {
+	c := ui.NewCache(testRenderer())
+	blocks := []ui.Block{
+		{Tag: "YOU", Lines: []ui.Line{{Text: "first"}}},
+		{Tag: "AGENT", Lines: []ui.Line{{Text: "second"}}},
+	}
+
+	got := c.Lines(blocks, 40, theme.Comfortable)
+	if len(got) != 2 {
+		t.Fatalf("returned %d blocks, want 2", len(got))
+	}
+	if strings.Contains(ansi.Strip(got[0][1]), "second") {
+		t.Error("anonymous blocks shared a cache slot; the first rendered as the second")
+	}
+	if !strings.Contains(ansi.Strip(got[1][1]), "second") {
+		t.Error("the second anonymous block did not render its own content")
+	}
+}
+
+// Go maps never shrink, so a session that prunes old blocks would otherwise
+// hold its peak footprint for the life of the process.
+func TestCacheDoesNotGrowWithoutBound(t *testing.T) {
+	c := ui.NewCache(testRenderer())
+
+	// A long session where the retained window slides forward.
+	for start := range 200 {
+		window := make([]ui.Block, 0, 20)
+		for i := start; i < start+20; i++ {
+			b := userBlock()
+			b.ID = ui.BlockID(i + 1)
+			window = append(window, b)
+		}
+		c.Lines(window, 100, theme.Comfortable)
+	}
+
+	if got := c.Entries(); got > 64 {
+		t.Errorf("cache holds %d entries after 200 windows of 20 blocks, want it bounded near the live set", got)
 	}
 }
 
