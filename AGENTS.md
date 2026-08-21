@@ -133,6 +133,35 @@ the events. Garbage collection cannot help: every block is still reachable.
 `TestSoakHeapStaysFlat` holds the line at 1.0x. Anything that retains per-event
 state outside that cap reintroduces the leak.
 
+## Six tools, and the ABI is load-bearing
+
+`read`, `write`, `edit`, `bash`, `grep`, `glob`. `PRODUCT_SPEC.md:131` fixes the
+set; anything else arrives over MCP. A seventh is a spec change and needs a
+proposal — `TestExactlySixTools` fails if one appears quietly, and the tool ABI
+is one of the two interfaces the spec calls load-bearing, so a schema change is
+a change to a contract other things are built on.
+
+`TestNoToolTouchesTheHost` parses every non-test file in `internal/tool` and
+fails on an import of `os`, `os/exec`, `net`, or `path/filepath`. The container
+is the security boundary; that test is what keeps it the *only* mechanism, so
+there is never a second path to get wrong. Sandbox paths are always
+slash-separated, which is why `path` is allowed and `path/filepath` is not.
+
+Every model-supplied path is resolved against the workspace root and refused if
+it escapes. This is about correctness rather than security — an escaped path is
+still inside the container — but a write that lands in `/usr` corrupts the
+toolchain silently, several turns before anyone notices.
+
+**Absent is not empty.** A field the schema marks required uses a pointer, so
+omitting `content` is an error while `content: ""` deliberately creates an empty
+file. Producing an empty file because the model forgot to say what to write is
+the worst available outcome.
+
+A tool returns `error` only when the harness could not run the call at all.
+Anything the agent should see and react to — a missing file, a failed build, an
+ambiguous edit — is a `Result` with `IsError` set, so it reaches the model as an
+observation rather than crashing the loop.
+
 ## The sandbox is the only execution target
 
 Tools run in the sandbox. Not on the host, not in a "local mode", not behind a
