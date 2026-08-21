@@ -19,7 +19,13 @@ build: ## Build the binary into ./agbala
 
 .PHONY: test
 test: ## Run the test suite with the race detector
-	$(GO) test -race -count=1 $(PKG)
+	$(GO) test -race -count=1 -timeout 20m $(PKG)
+
+# The sandbox tests start real containers, which is slow under the race
+# detector. This target skips them for a quick inner loop; `test` is the gate.
+.PHONY: test-fast
+test-fast: ## Run every test except the ones that start containers
+	$(GO) test -race -count=1 $$($(GO) list $(PKG) | grep -v '/sandbox')
 
 .PHONY: bench
 bench: ## Run the render benchmarks
