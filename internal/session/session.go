@@ -35,6 +35,9 @@ type State struct {
 	// gives the input line over to a keyed choice.
 	Approval *Approval
 
+	// refs is the reference of each block in Blocks, at the same index. It is
+	// what lets old blocks be dropped without scanning the map for them.
+	refs []event.BlockRef
 	// order maps a block reference to its index in Blocks, so an event can
 	// find the block it belongs to without scanning.
 	order map[event.BlockRef]int
@@ -51,6 +54,12 @@ type State struct {
 	// outcome tracks whether a tool block's output has reported success or
 	// failure, which is what tints the block.
 	outcome map[event.BlockRef]theme.Tone
+
+	// maxBlocks caps the transcript held in memory. See trim.
+	maxBlocks int
+	// dropped counts blocks trimmed from the front, so a client can say how
+	// much of the session is only in the log.
+	dropped int
 
 	ctxLimit int
 	// forked records that this session has branched, which changes both the
@@ -69,8 +78,37 @@ type Approval struct {
 	Options  []event.ApprovalOption
 }
 
-// New returns an empty session.
-func New() *State {
+// Transcript retention.
+//
+// The alt-screen design puts the transcript in our heap rather than the
+// terminal's scrollback, which makes it ours to bound. Measurement rather than
+// intuition set this: folding 100k events without a cap took the heap from
+// 2.0MB at 10k to 16.9MB, growing 8.4x for 10x the events. Garbage collection
+// does not help — every block is still reachable — so the transcript is capped
+// and the log on disk keeps the rest.
+const (
+	// DefaultMaxBlocks is roughly a day of scrollback at a working pace, and
+	// far more than a terminal can show at once.
+	DefaultMaxBlocks = 500
+
+	// trimSlack lets blocks accumulate past the cap before a trim, so the
+	// reindex it costs is amortised rather than paid on every append.
+	trimSlack = 128
+)
+
+// New returns an empty session retaining DefaultMaxBlocks blocks.
+func New() *State { return NewWithLimit(DefaultMaxBlocks) }
+
+// NewWithLimit returns an empty session retaining at most maxBlocks blocks.
+// A limit of zero retains everything, which is only safe for a session known to
+// be short — a fixture, or a test.
+func NewWithLimit(maxBlocks int) *State {
+	s := newState()
+	s.maxBlocks = maxBlocks
+	return s
+}
+
+func newState() *State {
 	return &State{
 		order:    map[event.BlockRef]int{},
 		rev:      map[event.BlockRef]uint32{},
@@ -192,10 +230,39 @@ func (s *State) block(ref event.BlockRef, tag string, tone theme.Tone, meta stri
 	s.Blocks = append(s.Blocks, ui.Block{
 		ID: s.nextID, Tag: tag, Tone: tone, Meta: meta,
 	})
-	i := len(s.Blocks) - 1
-	s.order[ref] = i
-	return i
+	s.refs = append(s.refs, ref)
+	s.order[ref] = len(s.Blocks) - 1
+	s.trim()
+	return s.order[ref]
 }
+
+// trim drops the oldest blocks once the transcript has run past its cap.
+//
+// It runs in batches so the reindex it costs is amortised. An event arriving
+// for a block that has been trimmed starts a new one rather than failing: the
+// alternative is dropping the event, and the log is the record either way.
+func (s *State) trim() {
+	if s.maxBlocks <= 0 || len(s.Blocks) <= s.maxBlocks+trimSlack {
+		return
+	}
+	drop := len(s.Blocks) - s.maxBlocks
+	for _, ref := range s.refs[:drop] {
+		delete(s.order, ref)
+		delete(s.rev, ref)
+		delete(s.proposed, ref)
+		delete(s.outcome, ref)
+	}
+	s.Blocks = append(s.Blocks[:0], s.Blocks[drop:]...)
+	s.refs = append(s.refs[:0], s.refs[drop:]...)
+	for i, ref := range s.refs {
+		s.order[ref] = i
+	}
+	s.dropped += drop
+}
+
+// Dropped reports how many blocks have been trimmed from the front of the
+// transcript. They remain in the event log; only the client's copy is bounded.
+func (s *State) Dropped() int { return s.dropped }
 
 // touch records that ref's block changed, so the renderer's cache re-lays out
 // this block and no other.

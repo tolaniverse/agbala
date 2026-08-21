@@ -58,6 +58,11 @@ jobs:
       # and its input, so a change in them is a real change.
       - name: Gate allocation metrics
         run: make bench-gate
+      # The transcript lives in our heap rather than the terminal's scrollback,
+      # so a long session is only survivable if it is bounded. This is the test
+      # that says so with a number.
+      - name: Soak
+        run: go test -run TestSoak -v ./internal/session/
       # Reporting only: wall-clock on a shared runner varies with whatever else
       # the machine is doing. Gating on it would train everyone to re-run the
       # job, so it is recorded for a human to read instead.
