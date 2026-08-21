@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/tolaniverse/agbala/internal/deploy"
@@ -157,7 +158,18 @@ func (r *Runner) one(ctx context.Context, task Task, arm Arm, trial int) Run {
 		}
 	}
 
+	// A run that produced no events failed before it started. Its stderr is
+	// the only thing that says why, and discarding it turns every distinct
+	// failure into an indistinguishable "error".
+	if !res.OK() && len(res.Stdout) == 0 {
+		run.Err = fmt.Errorf("the agent did not start: %s", firstLines(res.Stderr, 3))
+		return run
+	}
+
 	summary := readSummary(res.Stdout)
+	if !res.OK() && summary.turns <= 1 {
+		run.Err = fmt.Errorf("the agent failed on its first turn: %s", firstLines(res.Stderr, 3))
+	}
 	run.Turns = summary.turns
 	run.Denials = summary.denials
 	run.CostUSD = summary.costUSD
@@ -222,4 +234,17 @@ func (r *Runner) sandbox(ctx context.Context) (sandbox.Sandbox, func(), error) {
 		return nil, nil, err
 	}
 	return sb, cleanup, nil
+}
+
+// firstLines trims output to something worth putting in an error.
+func firstLines(b []byte, n int) string {
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	out := strings.Join(lines, "; ")
+	if out == "" {
+		return "no error output"
+	}
+	return out
 }
