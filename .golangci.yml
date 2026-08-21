@@ -32,6 +32,12 @@ linters:
       # Table-driven tests repeat literals by design.
       - path: _test\.go
         linters: [goconst, unparam]
+      # Every event payload implements Payload with an identical one-line Kind
+      # method. The interface documents what it is for; seventeen copies of the
+      # same sentence would bury the payload types they sit between.
+      - path: internal/event/payload\.go
+        linters: [revive]
+        text: 'exported method \w+\.Kind should have comment'
 
 formatters:
   enable:
