@@ -59,10 +59,16 @@ type HostStep struct {
 	Note  string `json:"note,omitempty"` // "token ttl 8h, 1 scope"
 }
 
-// HostLog is the client's own account of setting a session up.
+// HostLog is the client's own account of what it did on your behalf.
+//
+// Marks turns the per-step ✔/✕ on. A boot report earns them — each step is a
+// thing that could have failed — while a note about snapshotting and forking is
+// a narration of work already done, and marking every line would only add
+// noise.
 type HostLog struct {
 	Block BlockRef   `json:"block"`
 	Meta  string     `json:"meta,omitempty"` // "agbala start · 09:41:02"
+	Marks bool       `json:"marks,omitempty"`
 	Steps []HostStep `json:"steps"`
 }
 
@@ -138,11 +144,16 @@ type ScopedRule struct {
 	Summary string `json:"summary"`         // "migrations are append-only"
 }
 
-// OfinScope is the rule set resolved at session boot and injected into the
-// system prompt. Total may exceed len(Rules) when only the notable ones are
-// sent; the client shows the remainder as a count.
+// OfinScope is the rule set resolved for this repo and injected into the system
+// prompt. Total may exceed len(Rules) when only the notable ones are sent; the
+// client shows the remainder as a count.
+//
+// Block is optional. Resolving the scope at boot is worth announcing in the
+// transcript, but a client reattaching mid-session needs the same rules for its
+// rail without a block appearing out of nowhere, so an empty Block updates the
+// rail alone.
 type OfinScope struct {
-	Block BlockRef     `json:"block"`
+	Block BlockRef     `json:"block,omitempty"`
 	Scope string       `json:"scope"` // "go · service-tier-1 · payments"
 	Total int          `json:"total"`
 	Rules []ScopedRule `json:"rules"`
