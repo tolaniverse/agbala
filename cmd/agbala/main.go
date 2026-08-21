@@ -5,11 +5,14 @@
 // job is to authenticate once, stream a typed event stream, render the
 // transcript, and pass your keystrokes back. See PRODUCT_SPEC.md.
 //
-// There is no sandbox or control plane yet, so the client renders the session
-// states the visual design specifies. Pick one with -state.
+// There is no sandbox or control plane yet, so the client either renders one of
+// the session states the visual design specifies (-state) or replays an event
+// log from disk (-replay). Both go through the same fold, because a built-in
+// state is an event log too.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -17,11 +20,13 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/tolaniverse/agbala/internal/bench"
 	"github.com/tolaniverse/agbala/internal/scene"
+	"github.com/tolaniverse/agbala/internal/stream"
 	"github.com/tolaniverse/agbala/internal/theme"
 	"github.com/tolaniverse/agbala/internal/tui"
 )
@@ -45,7 +50,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 			"session state to render: "+strings.Join(tui.SceneNames(), ", "))
 		frametap = fs.String("frametap", "",
 			"write per-frame byte and latency statistics here on exit; - for stderr")
-		ascii = fs.Bool("ascii", false, "force the ASCII glyph set")
+		ascii  = fs.Bool("ascii", false, "force the ASCII glyph set")
+		replay = fs.String("replay", "",
+			"replay an event log instead of a built-in state; - reads stdin")
+		speed = fs.Float64("replay-speed", 1,
+			"replay pace: 1 follows the log's own timing, 0 runs as fast as it decodes")
+		maxDelay = fs.Duration("replay-max-delay", 2*time.Second,
+			"longest pause to honour between two events")
 	)
 
 	if err := fs.Parse(args); err != nil {
@@ -61,9 +72,26 @@ func run(args []string, stdout, stderr io.Writer) error {
 		glyphs = theme.ASCII()
 	}
 
-	model, err := tui.New(scene.Name(*state), glyphs)
-	if err != nil {
-		return err
+	// The reader owns a goroutine, so it is scoped to a context that is
+	// cancelled on the way out however this function returns.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var model tea.Model
+	if *replay != "" {
+		src, closeSrc, err := openLog(*replay)
+		if err != nil {
+			return err
+		}
+		defer closeSrc()
+		reader := stream.Read(ctx, src, stream.Options{Speed: *speed, MaxDelay: *maxDelay})
+		model = tui.Replay(glyphs, reader.Events())
+	} else {
+		m, err := tui.New(scene.Name(*state), glyphs)
+		if err != nil {
+			return err
+		}
+		model = m
 	}
 
 	// The tap sits between the renderer and the terminal, so it measures what
@@ -87,6 +115,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return writeStats(tap.Stats(), *frametap, stderr)
 	}
 	return nil
+}
+
+// openLog opens an event log, or stdin when the path is "-".
+func openLog(path string) (io.Reader, func(), error) {
+	if path == "-" {
+		return os.Stdin, func() {}, nil
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening event log: %w", err)
+	}
+	return f, func() { _ = f.Close() }, nil
 }
 
 // writeStats reports the frame distribution. Distributions, not means: one slow

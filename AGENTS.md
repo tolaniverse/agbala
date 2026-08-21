@@ -117,11 +117,21 @@ it exits.** Goroutine leaks are the failure mode this project is most exposed to
 long-lived streaming sessions with detach and reattach mean any goroutine
 blocked on a channel read is a candidate. Garbage collection does not save you
 here — a blocked goroutine is permanently reachable and retains its entire stack.
-When a test spawns a goroutine, end it with `defer goleak.VerifyNone(t)` and add
-`goleak` to `go.mod` — it is not currently a dependency.
+When a test spawns a goroutine, end it with `defer goleak.VerifyNone(t)`, or
+`goleak.VerifyTestMain(m)` for a package where most tests do. `internal/stream`
+is the worked example: its reader takes a context, its doc comment names every
+exit path, and its tests prove cancellation ends it whether it is blocked on a
+send or asleep on the clock.
 
 Maps that only grow are a leak in practice: Go maps never shrink. A registry
 that adds and removes holds its peak footprint for the life of the process.
+
+**The transcript is capped, and that is not optional.** Folding 100k events with
+an unbounded transcript took the heap from 2.0MB at 10k to 16.9MB — 8.4x for 10x
+the events. Garbage collection cannot help: every block is still reachable.
+`session.DefaultMaxBlocks` bounds it, the log on disk keeps the rest, and
+`TestSoakHeapStaysFlat` holds the line at 1.0x. Anything that retains per-event
+state outside that cap reintroduces the leak.
 
 ## The alt-screen invariant
 

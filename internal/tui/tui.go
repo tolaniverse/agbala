@@ -16,6 +16,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/tolaniverse/agbala/internal/scene"
+	"github.com/tolaniverse/agbala/internal/session"
+	"github.com/tolaniverse/agbala/internal/stream"
 	"github.com/tolaniverse/agbala/internal/theme"
 	"github.com/tolaniverse/agbala/internal/ui"
 )
@@ -39,24 +41,49 @@ type (
 	pulseMsg struct{}
 )
 
-// Model is the client's state: which scene is on screen, how big the terminal
-// is, and where the transcript is scrolled to.
+// Model is the client's state.
+//
+// The session comes off the event log and would look the same on any client
+// attached to it; local is what this terminal contributes — where it is
+// scrolled to, whether the cursor is showing. Keeping the two apart is what
+// lets a second client attach without either of them disturbing the other.
 type Model struct {
 	renderer ui.Renderer
 	cache    *ui.Cache
 	name     scene.Name
-	screen   ui.Screen
+	session  *session.State
+	local    session.Local
 	layout   ui.Layout
+
+	// events delivers a replay or a live session. Nil means the model is
+	// showing a state that was folded up front.
+	events <-chan stream.Msg
 }
 
-// New returns a Model showing the named scene.
+// New returns a Model showing the named state, folded from its event log.
 func New(name scene.Name, glyphs theme.Glyphs) (Model, error) {
-	s, ok := scene.Get(name)
-	if !ok {
+	st, err := scene.Fold(name)
+	if err != nil {
 		return Model{}, fmt.Errorf("unknown state %q; try one of %s", name, strings.Join(SceneNames(), ", "))
 	}
+	return newModel(glyphs, name, st), nil
+}
+
+// Replay returns a Model fed by events as they arrive.
+func Replay(glyphs theme.Glyphs, events <-chan stream.Msg) Model {
+	m := newModel(glyphs, "", session.New())
+	m.events = events
+	return m
+}
+
+func newModel(glyphs theme.Glyphs, name scene.Name, st *session.State) Model {
 	r := ui.New(glyphs)
-	return Model{renderer: r, cache: ui.NewCache(r), name: name, screen: s}, nil
+	return Model{
+		renderer: r, cache: ui.NewCache(r), name: name, session: st,
+		local: session.Local{
+			Prompt: ui.Prompt{Placeholder: "insert message", CursorOn: true},
+		},
+	}
 }
 
 // SceneNames lists the selectable scenes.
@@ -69,8 +96,37 @@ func SceneNames() []string {
 	return out
 }
 
-// Init starts the two animations the design specifies.
-func (m Model) Init() tea.Cmd { return tea.Batch(blink(), pulse()) }
+// Init starts the two animations the design specifies, and the event pump when
+// there is a stream to read.
+func (m Model) Init() tea.Cmd {
+	cmds := []tea.Cmd{blink(), pulse()}
+	if m.events != nil {
+		cmds = append(cmds, m.next())
+	}
+	return tea.Batch(cmds...)
+}
+
+// next waits for one event.
+//
+// One event per command, re-armed after each, is Bubble Tea's own idiom: the
+// runtime owns the goroutine, so nothing here can outlive the program, and
+// backpressure is the reader's bounded channel rather than an unbounded queue
+// of pending messages.
+func (m Model) next() tea.Cmd {
+	events := m.events
+	return func() tea.Msg {
+		msg, ok := <-events
+		if !ok {
+			return streamEndedMsg{}
+		}
+		return msg
+	}
+}
+
+// streamEndedMsg says the log ran out. The transcript stays on screen: it is
+// the record of what happened, and clearing it would throw away the thing you
+// were reading.
+type streamEndedMsg struct{}
 
 func blink() tea.Cmd {
 	return tea.Tick(blinkInterval, func(time.Time) tea.Msg { return blinkMsg{} })
@@ -89,12 +145,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case blinkMsg:
-		m.screen.Input.Prompt.CursorOn = !m.screen.Input.Prompt.CursorOn
+		m.local.Prompt.CursorOn = !m.local.Prompt.CursorOn
 		return m, blink()
 
 	case pulseMsg:
-		m.screen.Input.LoadingDim = !m.screen.Input.LoadingDim
+		m.local.LoadingDim = !m.local.LoadingDim
 		return m, pulse()
+
+	case stream.Msg:
+		// A malformed event is the log contradicting itself. Stopping the fold
+		// keeps the transcript honest rather than rendering past the problem.
+		if err := m.session.Apply(msg.Event); err != nil {
+			return m, tea.Quit
+		}
+		m.clampScroll()
+		return m, m.next()
+
+	case streamEndedMsg:
+		m.events = nil
+		return m, nil
 
 	case tea.KeyPressMsg:
 		return m.key(msg)
@@ -106,7 +175,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// While a turn is suspended the input line belongs to the approval choice.
 	// The design gives that line to require_human alone, so those keys are read
 	// before anything else can claim them.
-	if m.screen.Input.Prompt.Ask {
+	if m.session.Approval != nil {
 		switch msg.String() {
 		case "y", "a":
 			return m.resolveApproval("EXECUTING", theme.ToneOK), nil
@@ -124,19 +193,19 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c", "ctrl+d":
 		return m, tea.Quit
 	case "shift+tab":
-		m.screen.Input.Mode = m.screen.Input.Mode.Next()
+		m.session.Mode = m.session.Mode.Next()
 	case "up", "k":
-		m.screen.Scroll++
+		m.local.Scroll++
 	case "down", "j":
-		m.screen.Scroll--
+		m.local.Scroll--
 	case "pgup":
-		m.screen.Scroll += page
+		m.local.Scroll += page
 	case "pgdown":
-		m.screen.Scroll -= page
+		m.local.Scroll -= page
 	case "home":
-		m.screen.Scroll = m.maxScroll()
+		m.local.Scroll = m.maxScroll()
 	case "end":
-		m.screen.Scroll = 0
+		m.local.Scroll = 0
 	case "1", "2", "3", "4", "5":
 		m = m.switchScene(int(key[0] - '1'))
 	}
@@ -151,24 +220,25 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // clears the suspension — enough to show that the keyed choice is live and that
 // deciding returns the line to you.
 func (m Model) resolveApproval(state string, tone theme.Tone) Model {
-	m.screen.Session.State, m.screen.Session.Tone = state, tone
-	m.screen.Input.Prompt = ui.Prompt{Placeholder: "insert message", CursorOn: true}
-	m.screen.Input.Loading = ""
+	m.session.Session.State, m.session.Session.Tone = state, tone
+	m.session.Approval = nil
+	m.session.Loading = ""
 	return m
 }
 
 // switchScene is a development affordance standing in for the design's state
-// tabs, which are a mock control rather than part of the client.
+// tabs, which are a mock control rather than part of the client. It is a no-op
+// while a stream is feeding the model, since the session then belongs to the log.
 func (m Model) switchScene(i int) Model {
 	names := scene.Names()
-	if i < 0 || i >= len(names) {
+	if m.events != nil || i < 0 || i >= len(names) {
 		return m
 	}
-	s, ok := scene.Get(names[i])
-	if !ok {
+	st, err := scene.Fold(names[i])
+	if err != nil {
 		return m
 	}
-	m.name, m.screen = names[i], s
+	m.name, m.session = names[i], st
 	// Every block changed, so nothing cached survives.
 	m.cache.Reset()
 	return m
@@ -180,7 +250,7 @@ func (m Model) maxScroll() int {
 	if width <= 0 {
 		return 0
 	}
-	lines := m.cache.Lines(m.screen.Blocks, width, m.layout.Density)
+	lines := m.cache.Lines(m.session.View(m.local).Blocks, width, m.layout.Density)
 	return ui.MaxScroll(
 		ui.TotalLines(lines, m.layout.Density.BlockGap()),
 		ui.TranscriptHeight(m.layout.Height),
@@ -188,15 +258,15 @@ func (m Model) maxScroll() int {
 }
 
 func (m *Model) clampScroll() {
-	m.screen.Scroll = min(max(m.screen.Scroll, 0), m.maxScroll())
+	m.local.Scroll = min(max(m.local.Scroll, 0), m.maxScroll())
 }
 
 // View renders a frame.
 func (m Model) View() tea.View {
-	v := tea.NewView(strings.Join(m.renderer.Frame(m.screen, m.layout, m.cache), "\n"))
+	v := tea.NewView(strings.Join(m.renderer.Frame(m.session.View(m.local), m.layout, m.cache), "\n"))
 	v.AltScreen = true
 	v.BackgroundColor = theme.BgBase
-	v.WindowTitle = "agbala " + string(m.name)
+	v.WindowTitle = strings.TrimSpace("agbala " + string(m.name))
 	// The prompt draws its own block cursor, so the terminal's is hidden.
 	v.Cursor = nil
 	return v
