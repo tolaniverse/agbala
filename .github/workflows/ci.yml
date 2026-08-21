@@ -46,6 +46,34 @@ jobs:
         with:
           version: ${{ env.GOLANGCI_VERSION }}
 
+  perf:
+    name: perf
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      # Blocking: allocation counts and byte counts are a function of the code
+      # and its input, so a change in them is a real change.
+      - name: Gate allocation metrics
+        run: make bench-gate
+      # Reporting only: wall-clock on a shared runner varies with whatever else
+      # the machine is doing. Gating on it would train everyone to re-run the
+      # job, so it is recorded for a human to read instead.
+      - name: Record timings
+        if: always()
+        run: |
+          {
+            echo '### Render benchmarks'
+            echo
+            echo '```'
+            go test -run '^$' -bench 'BenchmarkFrame' -benchmem ./internal/ui/ || true
+            echo '```'
+            echo
+            echo '_Timings are reported, not gated. Allocation metrics are gated by the step above._'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest

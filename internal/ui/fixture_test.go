@@ -184,13 +184,25 @@ func sampleScreen() ui.Screen {
 	}
 }
 
-// longTranscript builds n blocks, for proving that frame cost does not grow
-// with session length.
+// longTranscript builds n identified blocks, for proving that frame cost does
+// not grow with session length. IDs start at 1 because zero means anonymous.
 func longTranscript(n int) []ui.Block {
 	blocks := make([]ui.Block, 0, n)
 	samples := allBlocks()
 	for i := range n {
-		blocks = append(blocks, samples[i%len(samples)].Block)
+		b := samples[i%len(samples)].Block
+		b.ID = ui.BlockID(i + 1)
+		blocks = append(blocks, b)
 	}
 	return blocks
+}
+
+// touch returns a copy of blocks with the block at i mutated, the way an event
+// stream mutates one: contents change and Rev moves.
+func touch(blocks []ui.Block, i int) []ui.Block {
+	out := make([]ui.Block, len(blocks))
+	copy(out, blocks)
+	out[i].Rev++
+	out[i].Meta = "changed"
+	return out
 }
