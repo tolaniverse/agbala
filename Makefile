@@ -27,6 +27,12 @@ test: ## Run the test suite with the race detector
 test-fast: ## Run every test except the ones that start containers
 	$(GO) test -race -count=1 $$($(GO) list $(PKG) | grep -v '/sandbox')
 
+# The experiment spends real money on model calls, so it is never part of any
+# other target. --max-spend bounds it; --arms and --trials narrow it.
+.PHONY: experiment
+experiment: ## Run the Òfin gate experiment (costs money; needs ANTHROPIC_API_KEY)
+	$(GO) run ./cmd/agbala experiment $(EXPERIMENT_ARGS)
+
 .PHONY: bench
 bench: ## Run the render benchmarks
 	$(GO) test -run '^$$' -bench . -benchmem $(PKG)

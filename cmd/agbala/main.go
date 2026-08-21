@@ -42,6 +42,19 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
+	// Subcommands come before flag parsing so `agbala experiment --trials 3`
+	// does not have to fight the top-level flag set.
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		switch args[0] {
+		case "secret":
+			return runSecret(args[1:], stdout, stderr)
+		case "experiment":
+			return runExperiment(args[1:], stdout, stderr)
+		default:
+			return fmt.Errorf("unknown command %q; try secret or experiment", args[0])
+		}
+	}
+
 	fs := flag.NewFlagSet("agbala", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (

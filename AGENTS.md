@@ -133,6 +133,51 @@ the events. Garbage collection cannot help: every block is still reachable.
 `TestSoakHeapStaysFlat` holds the line at 1.0x. Anything that retains per-event
 state outside that cap reintroduces the leak.
 
+## The loop runs inside the sandbox
+
+`cmd/agbala-agent` is cross-compiled for the sandbox's architecture, copied in,
+and run there. `PRODUCT_SPEC.md:29` calls that inversion the thing the rest of
+the design falls out of, and a version that ran the loop host-side while only
+executing tools remotely would keep the safety boundary but lose the offload.
+`TestTheAgentRunsInsideTheSandbox` proves it end to end.
+
+The agent writes the session's event log to stdout as JSONL, so a live session
+and a replay are the same code path and every run leaves a transcript.
+
+`internal/sandbox/local` is the one package that could become a host-side
+execution path, and two tests keep it from being one: the host client must not
+depend on it, and the agent must. It is legitimate only because the agent is
+already inside the sandbox, where the sandbox is simply the machine.
+
+The loop is hand-written rather than delegated to the SDK's tool runner because
+its states *are* the event protocol — each transition emits an event the client
+folds — and a denial that returns as an observation and continues is a policy
+decision inside the loop, not an approval hook around it.
+
+**Pricing lives on `inference.Model`, not on a response.** An implementation
+that priced its own usage would be a second place for the rates to drift; a
+test caught exactly that when the fake model reported no cost.
+
+## The experiment is the point of stack 3
+
+`internal/experiment` tests the claim everything else assumes. Three arms differ
+in one respect only: A puts rules in the prompt and enforces nothing, B enforces
+without explaining, C enforces and explains. B exists because without it a win
+for C over A would only show that enforcement beats prompting, which is not the
+claim being tested.
+
+Predictions are pre-registered **in the source**, and the report states each
+one's outcome either way — a prediction that is only mentioned when it holds is
+not a prediction. `TestReportStatesPredictionsEitherWay` holds that.
+
+Two design rules worth keeping:
+
+- **Whether a rule was broken is decided by inspecting the sandbox**, never by
+  reading the transcript. What the agent said it did is not evidence, and arm
+  A's whole purpose is to be able to actually do it.
+- **Control tasks that trip nothing are not optional.** Without them, a gate
+  that refuses all work scores perfectly.
+
 ## The gate is the only path to execution
 
 `ofin.Guarded` pairs the gate with the tool set so that running a tool and
