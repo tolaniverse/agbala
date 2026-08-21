@@ -64,3 +64,8 @@ tidy: ## Tidy go.mod and go.sum
 .PHONY: clean
 clean: ## Remove build artefacts
 	rm -rf $(BIN) dist/
+
+.PHONY: fixtures
+fixtures: ## Regenerate the fixture event logs, then review the diff
+	$(GO) test -run TestGenerateFixtures ./internal/session -update-fixtures
+	cp internal/session/testdata/*.jsonl internal/scene/testdata/
