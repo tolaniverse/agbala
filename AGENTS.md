@@ -133,6 +133,36 @@ the events. Garbage collection cannot help: every block is still reachable.
 `TestSoakHeapStaysFlat` holds the line at 1.0x. Anything that retains per-event
 state outside that cap reintroduces the leak.
 
+## The gate is the only path to execution
+
+`ofin.Guarded` pairs the gate with the tool set so that running a tool and
+evaluating it are the same operation. A loop that called `Evaluate` and then
+`Run` separately would work right up until someone added a path that forgot the
+first half — and that path would be invisible, because the tool would simply
+run.
+
+Two tests hold the line, and both were verified to fail when broken:
+
+- `TestNothingBypassesTheGate` scans the tree for a call to a tool's `Run`
+  outside `ofin/execute.go` and reports the file and line.
+- `TestDeniedCallNeverRuns` checks the filesystem afterwards. Not "the denial
+  was reported" — the file is not there.
+
+**A rule that can deny must carry a rationale**, enforced at load. `PRODUCT_SPEC.md:97`
+makes the rationale the payload the agent learns from, so a denying rule without
+one degrades the design into a wall the agent cannot re-plan against. `Verdict`
+has exactly three values; a fourth is a protocol error, not a behaviour to
+invent.
+
+`WithoutRationale()` exists for the experiment's arm B and nothing else. It
+withholds the explanation while changing enforcement not at all, so a difference
+in outcome is attributable to the explanation alone. The loader still requires
+every denying rule to have a rationale, so the flag cannot hide a rule that was
+never written properly.
+
+First match wins, the way a firewall reads. A call matching no rule runs: a rule
+set is a list of constraints, not an allowlist.
+
 ## Six tools, and the ABI is load-bearing
 
 `read`, `write`, `edit`, `bash`, `grep`, `glob`. `PRODUCT_SPEC.md:131` fixes the
