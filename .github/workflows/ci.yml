@@ -79,6 +79,23 @@ jobs:
             echo '_Timings are reported, not gated. Allocation metrics are gated by the step above._'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The sandbox tests skip themselves when no container runtime answers, so the
+  # `test` job above stays green on a machine without one. This job provisions a
+  # runtime so they actually run — a skipped test proves nothing about the
+  # boundary it exists to check.
+  sandbox:
+    name: sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Confirm a runtime is reachable
+        run: docker info --format '{{.ServerVersion}}'
+      - name: Sandbox tests
+        run: go test -race -count=1 -v ./internal/sandbox/...
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest

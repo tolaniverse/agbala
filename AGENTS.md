@@ -133,6 +133,35 @@ the events. Garbage collection cannot help: every block is still reachable.
 `TestSoakHeapStaysFlat` holds the line at 1.0x. Anything that retains per-event
 state outside that cap reintroduces the leak.
 
+## The sandbox is the only execution target
+
+Tools run in the sandbox. Not on the host, not in a "local mode", not behind a
+dev flag that skips the container because it is faster while iterating.
+`PRODUCT_SPEC.md` calls the absence of a privileged path the product itself, so
+`internal/sandbox` deliberately offers no way to reach the host filesystem and
+the tool layer has no host-side branch to fall back to.
+
+Two consequences worth stating, because both look like conveniences to add
+later:
+
+- **A non-zero exit is a `Result`, not an error.** A failing test suite is an
+  observation the agent acts on. Returning it as a Go error would make every
+  caller unwrap to find out what actually happened.
+- **`Command.Argv` is not a shell string.** It is passed through as an argument
+  vector, so a path containing a space cannot become two arguments and nothing
+  a model writes can be reinterpreted as a shell operator on the way in. A tool
+  that genuinely needs a shell asks for one by running `sh -c`, deliberately.
+
+The container backend drives the `docker`/`podman` CLI rather than a client
+library: one code path serves both runtimes, and the binary keeps shipping
+static with no container SDK linked in.
+
+Sandbox tests skip themselves when no runtime answers, so `make test` stays
+green on a machine without one — and CI runs them behind a job that provisions a
+runtime, because a skipped test proves nothing about the boundary it exists to
+check. Never leave a container behind: it outlives the process, which is worse
+than a leaked goroutine.
+
 ## The alt-screen invariant
 
 The client renders in the **alternate screen buffer**, and the transcript is
