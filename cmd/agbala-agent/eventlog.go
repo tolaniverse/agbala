@@ -130,7 +130,7 @@ func (l *eventLog) Executed(turn int, _ tool.Call, res tool.Result) {
 func (l *eventLog) Finished(o agent.Outcome) {
 	state := "DONE"
 	switch o.Stop {
-	case agent.StopError, agent.StopRefused:
+	case agent.StopError, agent.StopRefused, agent.StopMaxTokens:
 		state = "FAILED"
 	case agent.StopAwaitingApproval:
 		state = "AWAITING_APPROVAL"

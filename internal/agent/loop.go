@@ -49,6 +49,11 @@ type Config struct {
 	MaxTurns  int
 	MaxTokens int
 
+	// PromptRules are the rules shown to the model as context. When nil, the
+	// executor's rules are used. The experiment sets this explicitly because arm
+	// A shows the rules in the prompt while enforcing an empty rule set.
+	PromptRules []ofin.Rule
+
 	// Observer receives every state transition, for the event log.
 	Observer Observer
 }
@@ -111,6 +116,10 @@ const (
 	// StopRefused means a safety classifier declined the request.
 	StopRefused StopKind = "refused"
 
+	// StopMaxTokens means the model response was truncated at its token limit.
+	// Partial content and tool calls are not safe to treat as a completed turn.
+	StopMaxTokens StopKind = "max_tokens"
+
 	// StopError means the loop could not continue.
 	StopError StopKind = "error"
 )
@@ -140,8 +149,12 @@ func (r *Runner) Run(ctx context.Context, cfg Config) Outcome {
 		obs = nopObserver{}
 	}
 
+	promptRules := cfg.PromptRules
+	if promptRules == nil {
+		promptRules = r.exec.Gate().Rules()
+	}
 	req := inference.Request{
-		System:    systemPrompt(cfg.SystemPrompt, r.exec.Gate().Rules()),
+		System:    systemPrompt(cfg.SystemPrompt, promptRules),
 		Messages:  []inference.Message{{Role: inference.User, Text: cfg.Task}},
 		Tools:     r.tools(),
 		MaxTokens: cfg.MaxTokens,
@@ -165,6 +178,12 @@ func (r *Runner) Run(ctx context.Context, cfg Config) Outcome {
 		if resp.StopReason == inference.StopRefusal {
 			out.Stop = StopRefused
 			out.Err = fmt.Errorf("the model declined this request (%s)", resp.RefusalCategory)
+			obs.Finished(out)
+			return out
+		}
+		if resp.StopReason == inference.StopMaxTokens {
+			out.Stop = StopMaxTokens
+			out.Err = ErrMaxTokens
 			obs.Finished(out)
 			return out
 		}
@@ -266,5 +285,11 @@ func (nopObserver) Verdict(int, tool.Call, ofin.Decision) {}
 func (nopObserver) Executed(int, tool.Call, tool.Result)  {}
 func (nopObserver) Finished(Outcome)                      {}
 
-// ErrNoTask means Run was called with nothing to do.
-var ErrNoTask = errors.New("no task")
+var (
+	// ErrNoTask means Run was called with nothing to do.
+	ErrNoTask = errors.New("no task")
+
+	// ErrMaxTokens means the model response was truncated. The loop refuses to
+	// execute or report success from partial output.
+	ErrMaxTokens = errors.New("model response reached the token limit")
+)
