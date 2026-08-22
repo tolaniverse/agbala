@@ -15,10 +15,17 @@ import (
 
 // Defaults for a new sandbox.
 const (
-	// DefaultImage carries a Go and Node toolchain, matching the boot report
-	// the design shows. It is pinned by tag rather than digest for v0; a
-	// digest belongs here once releases are reproducible.
-	DefaultImage = "docker.io/library/debian:bookworm-slim"
+	// DefaultImage carries a Go toolchain, git, and a CA bundle.
+	//
+	// The CA bundle is not incidental: the agent loop runs inside the sandbox
+	// and calls an inference endpoint over TLS, and a slim image without one
+	// fails every request with an unknown-authority error that says nothing
+	// about the missing certificates. git is here because the rule set governs
+	// committing, and a sandbox that cannot commit cannot demonstrate that.
+	//
+	// Pinned by tag rather than digest for v0; a digest belongs here once
+	// releases are reproducible.
+	DefaultImage = "docker.io/library/golang:1.26-bookworm"
 
 	// Workspace is where the repo lives inside the container. Tool paths
 	// resolve against it.
@@ -44,6 +51,21 @@ type Config struct {
 	// runtime's default.
 	Memory string
 	CPUs   string
+
+	// NoNetwork cuts the container off from the network entirely.
+	//
+	// Off by default, and that default is load-bearing rather than lax. The
+	// agent loop runs inside the sandbox and has to reach an inference
+	// endpoint, so a sandbox with no network cannot run an agent at all.
+	//
+	// More subtly: egress is governed by an Òfin rule, and the gate is what
+	// enforces it. Cutting the network as well would put a second, invisible
+	// mechanism behind the same rule — an agent that "complied" would be
+	// indistinguishable from one the network happened to stop, and any
+	// measurement of whether the gate works would be measuring the network.
+	// Defence in depth is right in production and wrong in an experiment about
+	// which layer is doing the work.
+	NoNetwork bool
 }
 
 // Container is a sandbox backed by a container.
@@ -100,9 +122,9 @@ func (c *Container) Start(ctx context.Context) error {
 		"run", "--detach",
 		"--name", c.name,
 		"--workdir", Workspace,
-		// The agent is not a service. Nothing inside needs to accept a
-		// connection, and denying that outright is cheaper than auditing it.
-		"--network", "none",
+	}
+	if c.config.NoNetwork {
+		args = append(args, "--network", "none")
 	}
 	if c.config.Memory != "" {
 		args = append(args, "--memory", c.config.Memory)
