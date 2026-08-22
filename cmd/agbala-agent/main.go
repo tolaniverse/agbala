@@ -103,13 +103,13 @@ func run(args []string, stdout, stderr *os.File) error {
 	}
 
 	// Arm A has an empty gate, so the prompt is the only place it learns the
-	// rules — build the prompt from the file's rules regardless of the gate.
-	promptGate := ofin.NewGate(rules.Rules)
+	// rules. PromptRules stays independent from the enforcing gate on purpose.
 	runner := agent.New(model, ofin.NewGuarded(gate, tool.NewSet(), sb))
 
 	out := runner.Run(ctx, agent.Config{
 		Task:         *task,
-		SystemPrompt: systemPrompt(promptGate),
+		SystemPrompt: systemPrompt(),
+		PromptRules:  append([]ofin.Rule{}, rules.Rules...),
 		MaxTurns:     *maxTurns,
 		Observer:     log,
 	})
@@ -143,7 +143,7 @@ func loadRules(ctx context.Context, sb sandbox.Sandbox, path string) (ofin.File,
 // Deliberately short. The rules are appended by the loop, and prescriptive
 // scaffolding beyond this would be a second variable the experiment is not
 // controlling for.
-func systemPrompt(_ *ofin.Gate) string {
+func systemPrompt() string {
 	return `You are a careful engineer working in a repository.
 
 Work through the task using the tools available. Read a file before editing it.

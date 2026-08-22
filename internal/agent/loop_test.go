@@ -253,6 +253,38 @@ func TestRefusalStopsTheRun(t *testing.T) {
 	}
 }
 
+// A response cut off at max_tokens is partial. It must not be reported as done
+// or execute a possibly incomplete tool call.
+func TestMaxTokensFailsWithoutExecutingPartialOutput(t *testing.T) {
+	model := newFake(inference.Response{
+		Message: inference.Message{
+			Role: inference.Assistant,
+			Text: "partially finished",
+			Calls: []tool.Call{{
+				ID: "partial", Name: tool.Write,
+				Input: []byte(`{"path":"should-not-exist","content":"x"}`),
+			}},
+		},
+		StopReason: inference.StopMaxTokens,
+		Usage:      inference.Usage{InputTokens: 100, OutputTokens: 50},
+	})
+	// A nil sandbox makes accidental execution fail loudly; the correct path
+	// stops before touching the executor.
+	r := agent.New(model, ofin.NewGuarded(ofin.NewGate(nil), tool.NewSet(), nil))
+
+	out := r.Run(context.Background(), agent.Config{Task: "write a file"})
+
+	if out.Stop != agent.StopMaxTokens {
+		t.Fatalf("stop = %q, want max_tokens", out.Stop)
+	}
+	if !errors.Is(out.Err, agent.ErrMaxTokens) {
+		t.Fatalf("err = %v, want ErrMaxTokens", out.Err)
+	}
+	if out.Final != "" {
+		t.Errorf("partial text was reported as final: %q", out.Final)
+	}
+}
+
 // An agent stuck against a rule it cannot satisfy must stop and say so rather
 // than spend a budget discovering that. This is the experiment's stall signal.
 func TestTurnLimitStopsALoop(t *testing.T) {
@@ -294,6 +326,30 @@ func TestRulesReachTheSystemPrompt(t *testing.T) {
 	for _, want := range []string{"careful engineer", "ofin-014", "append-only", "ofin-031"} {
 		if !strings.Contains(sys, want) {
 			t.Errorf("the system prompt is missing %q:\n%s", want, sys)
+		}
+	}
+}
+
+// Arm A must see the same rules as B and C while its enforcing gate stays
+// empty. Otherwise the experiment changes two variables and cannot support its
+// conclusions.
+func TestPromptRulesCanDifferFromTheEnforcingGate(t *testing.T) {
+	f, err := ofin.Parse([]byte(rulesYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := newFake(says("understood"))
+	r := agent.New(model, ofin.NewGuarded(ofin.NewGate(nil), tool.NewSet(), nil))
+
+	r.Run(context.Background(), agent.Config{
+		Task:        "hello",
+		PromptRules: f.Rules,
+	})
+
+	sys := model.requests()[0].System
+	for _, want := range []string{"ofin-014", "append-only", "ofin-031"} {
+		if !strings.Contains(sys, want) {
+			t.Errorf("prompt-only arm is missing %q:\n%s", want, sys)
 		}
 	}
 }

@@ -51,8 +51,9 @@ type Outcome struct {
 // rather than the turn ending.
 //
 // require_human is reported, not executed. The caller suspends the turn and
-// asks the person at the terminal; approving it means calling Run explicitly
-// with a decision that says so, which is a deliberate second step.
+// surfaces the call to the host. Resuming it requires the session transport to
+// carry a human decision back into the sandbox; v0 deliberately stops at this
+// boundary rather than inventing a local bypass.
 func (x *Guarded) Execute(ctx context.Context, call tool.Call) (Outcome, error) {
 	d := x.gate.Evaluate(call)
 	if !d.Allowed() {
